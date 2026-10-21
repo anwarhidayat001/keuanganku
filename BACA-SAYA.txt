@@ -1,0 +1,6 @@
+CARA MENDAPATKAN APK
+1. Buat repo baru di GitHub, upload SEMUA isi folder ini (termasuk folder .github).
+2. Buka tab Actions > "Build APK" > tunggu selesai (~5 menit).
+3. Unduh artifact "Keuanganku-APK" > ekstrak > pasang app-debug.apk di HP
+   (izinkan "Install dari sumber tidak dikenal").
+Coba cepat tanpa APK: buka www/index.html di Chrome HP.
