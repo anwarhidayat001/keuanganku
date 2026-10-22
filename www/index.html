@@ -37,20 +37,24 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 let db=null;try{db=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 db=db||{tx:[],cats:{out:['Makan & Minum','Transport','Belanja','Tagihan','Hiburan','Kesehatan','Pendidikan','Lainnya'],in:['Gaji','Bonus','Usaha','Hadiah','Lainnya']}};
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}};
+const migrate=()=>{db.accs=db.accs&&db.accs.length?db.accs:[{id:1,name:'Dompet',init:0}];db.tx.forEach(x=>{if(!x.acc)x.acc=db.accs[0].id})};migrate();
+const an=id=>(db.accs.find(a=>a.id===id)||{name:'(dihapus)'}).name;
+const accBal=a=>a.init+db.tx.reduce((s,x)=>s+(x.acc===a.id?(x.type==='in'?x.amount:-x.amount):0)+(x.type==='tf'&&x.to===a.id?x.amount:0),0);
 const rp=n=>(n<0?'-':'')+'Rp '+Math.round(Math.abs(n)).toLocaleString('id-ID');
 const ym=d=>d.slice(0,7),today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 const BL=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 const lbl=m=>BL[+m.slice(5)-1]+' '+m.slice(0,4);
 const shift=(m,n)=>{const d=new Date(+m.slice(0,4),+m.slice(5)-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
-let tab='d',cur=ym(today()),flt='all',q='';
+let tab='d',cur=ym(today()),flt='all',q='',af=0;
 const sum=(a,t)=>a.filter(x=>x.type===t).reduce((s,x)=>s+x.amount,0);
 const PAL=['#2f6fed','#e11d48','#f59e0b','#16a34a','#8b5cf6','#06b6d4','#ec4899','#84cc16','#64748b'];
 function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
  ({d:dash,l:list,s:sett})[tab]();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render();scrollTo(0,0)});
 function mbar(){return `<div class="row card"><button class="btn g" onclick="cur=shift(cur,-1);render()">‹</button><b>${lbl(cur)}</b><button class="btn g" onclick="cur=shift(cur,1);render()">›</button></div>`}
-function dash(){const all=db.tx,mo=all.filter(x=>ym(x.date)===cur),i=sum(mo,'in'),o=sum(mo,'out'),bal=sum(all,'in')-sum(all,'out');
+function dash(){const all=db.tx,mo=all.filter(x=>ym(x.date)===cur),i=sum(mo,'in'),o=sum(mo,'out'),bal=db.accs.reduce((s,a)=>s+accBal(a),0);
  $('#v').innerHTML=mbar()+`<div class="card"><div class="mut">Saldo total</div><div class="big ${bal<0?'out':''}">${rp(bal)}</div></div>
+ <div class="card"><b>Saldo per pos</b>${db.accs.map(a=>`<div class="row" style="padding:6px 0"><span>${esc(a.name)}</span><b class="${accBal(a)<0?'out':''}">${rp(accBal(a))}</b></div>`).join('')}</div>
  <div class="grid"><div class="card"><div class="mut">Pemasukan</div><b class="in">${rp(i)}</b></div><div class="card"><div class="mut">Pengeluaran</div><b class="out">${rp(o)}</b></div></div>
  <div class="card"><div class="mut">Selisih bulan ini</div><b class="${i-o<0?'out':'in'}">${rp(i-o)}</b>${i?`<div class="mut">Tabungan ${Math.round((i-o)/i*100)}% dari pemasukan</div>`:''}</div>
  <div class="card"><b>Tren 6 bulan</b><canvas id="c1" height="180"></canvas><div class="mut">🟩 Masuk &nbsp; 🟥 Keluar</div></div>
@@ -58,7 +62,7 @@ function dash(){const all=db.tx,mo=all.filter(x=>ym(x.date)===cur),i=sum(mo,'in'
  <div class="card"><b>Terbaru</b>${mo.length?items(mo.slice().sort(cmp).slice(0,5)):'<p class="mut">Belum ada transaksi bulan ini. Tekan + untuk menambah.</p>'}</div>`;
  bars();donut(mo);}
 const cmp=(a,b)=>b.date.localeCompare(a.date)||b.id-a.id;
-function items(a){return a.map(x=>`<div class="item" onclick="openF(${x.id})"><div><b>${esc(x.cat)}</b><div class="mut">${x.date}${x.note?' · '+esc(x.note):''}</div></div><b class="${x.type}">${x.type==='in'?'+':'-'}${rp(x.amount)}</b></div>`).join('')}
+function items(a){return a.map(x=>{const t=x.type==='tf';return `<div class="item" onclick="openF(${x.id})"><div><b>${t?'Transfer':esc(x.cat)}</b><div class="mut">${x.date} · ${t?esc(an(x.acc))+' → '+esc(an(x.to)):esc(an(x.acc))}${x.note?' · '+esc(x.note):''}</div></div><b class="${t?'':x.type}">${t?'':x.type==='in'?'+':'-'}${rp(x.amount)}</b></div>`}).join('')}
 function cv(id){const c=$(id),r=devicePixelRatio||1,w=c.clientWidth,h=+c.getAttribute('height');c.width=w*r;c.height=h*r;const g=c.getContext('2d');g.scale(r,r);return[g,w,h]}
 function bars(){const[g,w,h]=cv('#c1'),ms=[...Array(6)].map((_,k)=>shift(cur,k-5)),d=ms.map(m=>{const a=db.tx.filter(x=>ym(x.date)===m);return[sum(a,'in'),sum(a,'out')]}),mx=Math.max(1,...d.flat()),gw=w/6,cs=getComputedStyle(document.body);
  g.font='11px system-ui';g.textAlign='center';d.forEach((v,k)=>{[['#16a34a',v[0]],['#e11d48',v[1]]].forEach(([c,n],j)=>{const bh=(h-30)*n/mx;g.fillStyle=c;g.fillRect(k*gw+gw/2-14+j*15,h-20-bh,13,bh)});g.fillStyle=cs.getPropertyValue('--mut');g.fillText(BL[+ms[k].slice(5)-1],k*gw+gw/2,h-5)})}
@@ -66,37 +70,46 @@ function donut(mo){const[g,w,h]=cv('#c2'),m={};mo.filter(x=>x.type==='out').forE
  if(!t){g.fillStyle=getComputedStyle(document.body).getPropertyValue('--mut');g.textAlign='center';g.fillText('Belum ada pengeluaran',w/2,h/2);return}
  let a=-Math.PI/2;e.forEach(([k,v],n)=>{const s=v/t*2*Math.PI;g.beginPath();g.arc(w/2,h/2,70,a,a+s);g.arc(w/2,h/2,42,a+s,a,true);g.closePath();g.fillStyle=PAL[n%PAL.length];g.fill();a+=s});
  $('#lg').innerHTML=e.map(([k,v],n)=>`<div class="row" style="padding:4px 0"><span><span class="dot" style="background:${PAL[n%PAL.length]}"></span>${esc(k)}</span><span>${rp(v)} <span class="mut">${Math.round(v/t*100)}%</span></span></div>`).join('')}
-function list(){let a=db.tx.filter(x=>ym(x.date)===cur&&(flt==='all'||x.type===flt)&&(!q||(x.cat+' '+x.note).toLowerCase().includes(q))).sort(cmp);
- $('#v').innerHTML=mbar()+`<div class="chips">${[['all','Semua'],['in','Masuk'],['out','Keluar']].map(([k,t])=>`<div class="chip ${flt===k?'on':''}" onclick="flt='${k}';render()">${t}</div>`).join('')}</div>
+function list(){let a=db.tx.filter(x=>ym(x.date)===cur&&(flt==='all'||x.type===flt)&&(!af||x.acc===af||x.to===af)&&(!q||(x.cat+' '+x.note).toLowerCase().includes(q))).sort(cmp);
+ $('#v').innerHTML=mbar()+`<div class="chips">${[['all','Semua'],['in','Masuk'],['out','Keluar'],['tf','Transfer']].map(([k,t])=>`<div class="chip ${flt===k?'on':''}" onclick="flt='${k}';render()">${t}</div>`).join('')}</div>
+ <select onchange="af=+this.value;render()"><option value="0">Semua pos</option>${db.accs.map(a=>`<option value="${a.id}" ${af===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select>
  <input id="sq" placeholder="Cari kategori / catatan…" value="${esc(q)}" oninput="q=this.value.toLowerCase();clearTimeout(window.tq);window.tq=setTimeout(()=>{list();$('#sq').focus();$('#sq').setSelectionRange(99,99)},300)">
  <div class="card">${a.length?items(a):'<p class="mut">Tidak ada transaksi.</p>'}</div>`}
 let ed=null,ft='out';
 function openF(id){ed=id?db.tx.find(x=>x.id===id):null;ft=ed?ed.type:'out';form();$('#m').style.display='flex'}
-function form(){const x=ed||{amount:'',cat:'',date:today(),note:''};
- $('#f').innerHTML=`<h3 style="margin:0 0 10px">${ed?'Edit':'Tambah'} Transaksi</h3><div class="chips"><div class="chip ${ft==='out'?'on':''}" onclick="ft='out';keep();form()">Pengeluaran</div><div class="chip ${ft==='in'?'on':''}" onclick="ft='in';keep();form()">Pemasukan</div></div>
+function form(){const x=ed||{amount:'',cat:'',date:today(),note:'',acc:db.accs[0].id,to:(db.accs[1]||db.accs[0]).id},isE=ed&&ed.id;
+ const so=id=>db.accs.map(a=>`<option value="${a.id}" ${a.id===id?'selected':''}>${esc(a.name)}</option>`).join('');
+ $('#f').innerHTML=`<h3 style="margin:0 0 10px">${isE?'Edit':'Tambah'} Transaksi</h3><div class="chips">${[['out','Pengeluaran'],['in','Pemasukan'],['tf','Transfer']].map(([k,t])=>`<div class="chip ${ft===k?'on':''}" onclick="ft='${k}';keep();form()">${t}</div>`).join('')}</div>
  <label class="mut">Jumlah (Rp)</label><input id="fa" inputmode="numeric" value="${x.amount}" placeholder="0">
- <label class="mut">Kategori</label><select id="fc">${db.cats[ft].map(c=>`<option ${c===x.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>
+ <label class="mut">${ft==='in'?'Masuk ke pos':ft==='out'?'Dipotong dari pos':'Dari pos'}</label><select id="fp">${so(x.acc)}</select>
+ ${ft==='tf'?`<label class="mut">Ke pos</label><select id="ft2">${so(x.to)}</select>`:`<label class="mut">Kategori</label><select id="fc">${db.cats[ft].map(c=>`<option ${c===x.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>`}
  <label class="mut">Tanggal</label><input id="fd" type="date" value="${x.date}">
  <label class="mut">Catatan</label><input id="fn" value="${esc(x.note||'')}" placeholder="Opsional">
- <div class="row"><button class="btn g" onclick="closeF()">Batal</button>${ed?'<button class="btn d" onclick="del()">Hapus</button>':''}<button class="btn" onclick="saveF()">Simpan</button></div>`}
-function keep(){ed=Object.assign({},ed||{},{amount:$('#fa').value,date:$('#fd').value,note:$('#fn').value,cat:'',id:ed&&ed.id})}
+ <div class="row"><button class="btn g" onclick="closeF()">Batal</button>${isE?'<button class="btn d" onclick="del()">Hapus</button>':''}<button class="btn" onclick="saveF()">Simpan</button></div>`}
+function keep(){ed=Object.assign({},ed||{},{amount:$('#fa').value,date:$('#fd').value,note:$('#fn').value,cat:'',acc:+$('#fp').value,to:$('#ft2')?+$('#ft2').value:(ed&&ed.to)||db.accs[0].id,id:ed&&ed.id})}
 function closeF(){$('#m').style.display='none'}
 function saveF(){const amt=Math.round(+String($('#fa').value).replace(/[^\d.]/g,''));if(!amt||amt<=0)return alert('Isi jumlah yang valid.');if(!$('#fd').value)return alert('Isi tanggal.');
- const r={type:ft,amount:amt,cat:$('#fc').value,date:$('#fd').value,note:$('#fn').value.trim()};
+ const r={type:ft,amount:amt,acc:+$('#fp').value,date:$('#fd').value,note:$('#fn').value.trim()};
+ if(ft==='tf'){r.to=+$('#ft2').value;r.cat='Transfer';if(r.to===r.acc)return alert('Pos asal dan tujuan harus berbeda.')}else{r.cat=$('#fc').value;r.to=undefined}
  if(ed&&ed.id){Object.assign(db.tx.find(x=>x.id===ed.id),r)}else db.tx.push({id:Date.now(),...r});
  save();closeF();cur=ym(r.date);render()}
 function del(){if(confirm('Hapus transaksi ini?')){db.tx=db.tx.filter(x=>x.id!==ed.id);save();closeF();render()}}
 $('#m').onclick=e=>{if(e.target.id==='m')closeF()};
-const csv=()=>'Tanggal,Jenis,Kategori,Jumlah,Catatan\n'+db.tx.slice().sort(cmp).map(x=>[x.date,x.type==='in'?'Pemasukan':'Pengeluaran',x.cat,x.amount,x.note].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+const csv=()=>'Tanggal,Jenis,Pos,Kategori,Jumlah,Catatan\n'+db.tx.slice().sort(cmp).map(x=>[x.date,x.type==='in'?'Pemasukan':x.type==='out'?'Pengeluaran':'Transfer',x.type==='tf'?an(x.acc)+' > '+an(x.to):an(x.acc),x.cat,x.amount,x.note].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
 function dl(name,txt,type){const f=new File([txt],name,{type});if(navigator.canShare&&navigator.canShare({files:[f]}))return navigator.share({files:[f],title:name}).catch(()=>{});const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=name;a.click()}
 function copyCsv(){const t=csv().replace(/,/g,'\t').replace(/"/g,'');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>alert('Tersalin. Buka Google Sheets lalu tempel (paste).')).catch(()=>prompt('Salin manual:',t))}
-function sett(){$('#v').innerHTML=['out','in'].map(t=>`<div class="card"><b>Kategori ${t==='out'?'Pengeluaran':'Pemasukan'}</b><div>${db.cats[t].map((c,i)=>`<span class="tag" onclick="rc('${t}',${i})">${esc(c)} ✕</span>`).join('')}</div><div class="row" style="margin-top:8px"><input id="nc${t}" placeholder="Kategori baru" style="margin:0"><button class="btn" onclick="ac('${t}')">Tambah</button></div></div>`).join('')+
+function sett(){$('#v').innerHTML=`<div class="card"><b>Pos Saldo</b><p class="mut">Contoh: Tabungan Bank A, Bank B, Saham, Tunai. Ketuk untuk ubah nama / saldo awal.</p>${db.accs.map(a=>`<div class="item" onclick="ea(${a.id})"><div><b>${esc(a.name)}</b><div class="mut">Saldo awal ${rp(a.init)}</div></div><div class="row"><b>${rp(accBal(a))}</b><button class="btn g" onclick="event.stopPropagation();da(${a.id})">✕</button></div></div>`).join('')}<div class="row" style="margin-top:8px"><input id="na" placeholder="Nama pos baru" style="margin:0"><input id="ni" inputmode="numeric" placeholder="Saldo awal" style="margin:0"><button class="btn" onclick="aa()">Tambah</button></div></div>`+
+ ['out','in'].map(t=>`<div class="card"><b>Kategori ${t==='out'?'Pengeluaran':'Pemasukan'}</b><div>${db.cats[t].map((c,i)=>`<span class="tag" onclick="rc('${t}',${i})">${esc(c)} ✕</span>`).join('')}</div><div class="row" style="margin-top:8px"><input id="nc${t}" placeholder="Kategori baru" style="margin:0"><button class="btn" onclick="ac('${t}')">Tambah</button></div></div>`).join('')+
  `<div class="card"><b>Data & Spreadsheet</b><p class="mut">${db.tx.length} transaksi tersimpan di perangkat ini.</p>
  <div class="grid"><button class="btn" onclick="dl('keuanganku.csv',csv(),'text/csv')">Ekspor CSV</button><button class="btn" onclick="copyCsv()">Salin → Google Sheets</button>
  <button class="btn g" onclick="dl('keuanganku-backup.json',JSON.stringify(db),'application/json')">Backup JSON</button><button class="btn g" onclick="$('#rf').click()">Restore JSON</button></div>
- <input type="file" id="rf" accept=".json,application/json" style="display:none" onchange="rest(this)"><button class="btn d" style="margin-top:10px;width:100%" onclick="if(confirm('Hapus SEMUA data?')){db.tx=[];save();render()}">Hapus semua data</button></div>`}
+ <input type="file" id="rf" accept=".json,application/json" style="display:none" onchange="rest(this)"><button class="btn d" style="margin-top:10px;width:100%" onclick="if(confirm('Hapus SEMUA transaksi? (pos saldo tetap ada)')){db.tx=[];save();render()}">Hapus semua transaksi</button></div>`}
+const num=v=>Math.round(+String(v).replace(/[^\d-]/g,''))||0;
+function aa(){const n=$('#na').value.trim();if(!n)return;db.accs.push({id:Date.now(),name:n,init:num($('#ni').value)});save();sett()}
+function ea(id){const a=db.accs.find(x=>x.id===id),n=prompt('Nama pos:',a.name);if(n===null)return;const i=prompt('Saldo awal (Rp):',a.init);if(i===null)return;a.name=n.trim()||a.name;a.init=num(i);save();sett()}
+function da(id){const u=db.tx.filter(x=>x.acc===id||x.to===id).length;if(db.accs.length<2)return alert('Minimal harus ada 1 pos.');if(u)return alert('Pos masih dipakai '+u+' transaksi. Hapus/ubah transaksinya dulu.');if(confirm('Hapus pos ini?')){db.accs=db.accs.filter(a=>a.id!==id);save();sett()}}
 function ac(t){const v=$('#nc'+t).value.trim();if(v&&!db.cats[t].includes(v)){db.cats[t].push(v);save();sett()}}
 function rc(t,i){if(db.cats[t].length>1&&confirm('Hapus kategori "'+db.cats[t][i]+'"? (transaksi lama tetap ada)')){db.cats[t].splice(i,1);save();sett()}}
-function rest(el){const f=el.files[0];if(!f)return;f.text().then(s=>{const d=JSON.parse(s);if(!Array.isArray(d.tx)||!d.cats)throw 0;if(confirm('Timpa data saat ini dengan backup ('+d.tx.length+' transaksi)?')){db=d;save();render()}}).catch(()=>alert('File backup tidak valid.'))}
+function rest(el){const f=el.files[0];if(!f)return;f.text().then(s=>{const d=JSON.parse(s);if(!Array.isArray(d.tx)||!d.cats)throw 0;if(confirm('Timpa data saat ini dengan backup ('+d.tx.length+' transaksi)?')){db=d;migrate();save();render()}}).catch(()=>alert('File backup tidak valid.'))}
 addEventListener('resize',()=>{if(tab==='d')dash()});render();
 </script></body></html>
